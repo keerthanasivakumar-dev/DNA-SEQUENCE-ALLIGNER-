@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNA Sequence Aligner</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mute:#647084;--line:#e2e6ec;--brand:#2f5d8a;
+--A:#cfe8d5;--C:#cfe0f3;--G:#f6e3b8;--T:#f3cfd0;--path:#d1364b}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1a2029;--ink:#e8ecf1;--mute:#93a0b4;--line:#2a3340;--brand:#7fb0e0;
+--A:#2c4a37;--C:#2a415c;--G:#5a4a25;--T:#5b3336;--path:#ff6b81}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:28px 24px 8px;max-width:1180px;margin:auto}
+h1{margin:0;font-size:1.6rem;letter-spacing:-.01em} header p{margin:4px 0 0;color:var(--mute);max-width:60ch}
+main{max-width:1180px;margin:auto;padding:16px 24px 48px;display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+label{display:block;font-weight:600;font-size:.9rem;margin:14px 0 6px} label:first-child{margin-top:0}
+textarea,select,input{width:100%;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9rem;resize:vertical}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.row label{margin:0 0 4px;font-weight:500;color:var(--mute);font-size:.8rem}
+.actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+button{font:inherit;border-radius:6px;padding:9px 14px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600;flex:1}
+button:hover{filter:brightness(.96)}
+.hint{color:var(--mute);font-size:.85rem;margin-top:6px}
+#msg{color:var(--path);margin-top:10px;min-height:1.2em;font-size:.9rem}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:16px}
+.stat b{display:block;font-size:1.7rem;line-height:1.1} .stat span{color:var(--mute);font-size:.85rem}
+h2{font-size:1rem;margin:0 0 10px}
+.aln{overflow-x:auto;padding-bottom:6px}
+.aln .line{display:flex;gap:2px;margin-bottom:2px;width:max-content}
+.t{width:26px;height:30px;display:grid;place-items:center;border-radius:4px;font:600 .95rem ui-monospace,Menlo,Consolas,monospace}
+.t.A{background:var(--A)}.t.C{background:var(--C)}.t.G{background:var(--G)}.t.T{background:var(--T)}
+.t.gap{background:transparent;color:var(--mute)} .t.bar{height:14px;color:var(--mute);font-weight:400;font-size:.8rem}
+.legend{display:flex;gap:14px;color:var(--mute);font-size:.85rem;margin-top:10px;flex-wrap:wrap}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.mx{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;font:.8rem ui-monospace,Menlo,Consolas,monospace}
+td,th{min-width:34px;height:30px;text-align:center;border:1px solid var(--line);padding:0 4px}
+th{background:var(--bg);color:var(--mute);position:sticky;top:0} th:first-child{left:0;z-index:1;position:sticky}
+td.p{outline:2px solid var(--path);outline-offset:-2px;font-weight:700}
+.empty{color:var(--mute);padding:28px 4px}
+.side{display:grid;gap:20px}
+</style></head>
+<body>
+<header><h1>DNA Sequence Aligner</h1>
+<p>Compare two sequences with dynamic programming and see how the best alignment is traced through the score table.</p></header>
+<main>
+<section class="card">
+  <label for="s1">Sequence 1</label><textarea id="s1" rows="4" spellcheck="false">GATTACAGATTACA</textarea>
+  <label for="s2">Sequence 2</label><textarea id="s2" rows="4" spellcheck="false">GCATGCGATACA</textarea>
+  <p class="hint">Plain letters or FASTA. Up to 1500 letters each.</p>
+  <label for="mode">Alignment type</label>
+  <select id="mode"><option value="global">Global (Needleman-Wunsch)</option><option value="local">Local (Smith-Waterman)</option></select>
+  <label>Scoring</label>
+  <div class="row">
+    <div><label for="match">Match</label><input id="match" type="number" value="1"></div>
+    <div><label for="mismatch">Mismatch</label><input id="mismatch" type="number" value="-1"></div>
+    <div><label for="gap">Gap</label><input id="gap" type="number" value="-2"></div>
+  </div>
+  <div class="actions"><button class="primary" id="go">Align sequences</button><button id="ex">Load example</button></div>
+  <div id="msg" role="alert"></div>
+</section>
+<div class="side" id="out"><div class="card empty">Enter two sequences and choose Align sequences to see the result.</div></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const tile = c => `<div class="t ${c==='-'?'gap':('ACGT'.includes(c)?c:'')}">${esc(c)}</div>`;
+
+async function run() {
+  $('msg').textContent = '';
+  const body = {seq1:$('s1').value, seq2:$('s2').value, mode:$('mode').value,
+    match:+$('match').value, mismatch:+$('mismatch').value, gap:+$('gap').value};
+  try {
+    const r = await fetch('/align', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Something went wrong.');
+    render(d);
+  } catch (e) { $('msg').textContent = e.message; }
+}
+
+function render(d) {
+  const L = d.top.length;
+  let matches = 0, gaps = 0;
+  for (let i = 0; i < L; i++) { if (d.middle[i] === '|') matches++; if (d.top[i]==='-'||d.bottom[i]==='-') gaps++; }
+  const ident = L ? Math.round(matches / L * 100) : 0;
+  const row = s => `<div class="line">${[...s].map(tile).join('')}</div>`;
+  const bars = `<div class="line">${[...d.middle].map(c=>`<div class="t bar">${c==='|'?'|':''}</div>`).join('')}</div>`;
+
+  const flat = d.matrix.flat(), lo = Math.min(...flat), hi = Math.max(...flat);
+  const path = new Set(d.path.map(p => p.join(',')));
+  let t = '<table><tr><th></th><th></th>' + [...d.seq2].map(c=>`<th>${c}</th>`).join('') + '</tr>';
+  d.matrix.forEach((r, i) => {
+    t += `<tr><th>${i ? d.seq1[i-1] : ''}</th>`;
+    r.forEach((v, j) => {
+      const a = ((v - lo) / ((hi - lo) || 1) * .5).toFixed(2);
+      t += `<td id="c${i}_${j}" style="background:rgba(47,93,138,${a})">${v}</td>`;
+    });
+    t += '</tr>';
+  });
+  t += '</table>';
+
+  $('out').innerHTML = `
+  <div class="card"><div class="stats">
+    <div class="stat"><b>${d.score}</b><span>alignment score</span></div>
+    <div class="stat"><b>${ident}%</b><span>identity</span></div>
+    <div class="stat"><b>${matches}/${L}</b><span>matching positions</span></div>
+    <div class="stat"><b>${gaps}</b><span>gaps</span></div></div>
+    <h2>Best ${$('mode').value} alignment</h2>
+    <div class="aln">${row(d.top)}${bars}${row(d.bottom)}</div>
+    <div class="legend"><span><i style="background:var(--A)"></i>A</span><span><i style="background:var(--C)"></i>C</span>
+    <span><i style="background:var(--G)"></i>G</span><span><i style="background:var(--T)"></i>T</span><span>- gap</span></div></div>
+  <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+    <h2 style="margin:0">Score table and traceback</h2><button id="play">Replay traceback</button></div>
+    <div class="mx">${t}</div>
+    <p class="hint">Outlined cells are the path. It starts at the ${$('mode').value==='local'?'highest score':'bottom-right cell'} and moves back to the ${$('mode').value==='local'?'first zero':'top-left'}.</p></div>`;
+  const cells = d.path.map(([i,j]) => $(`c${i}_${j}`));
+  const show = n => cells.forEach((c,k) => c.classList.toggle('p', k < n));
+  show(cells.length);
+  let timer;
+  $('play').onclick = () => { clearInterval(timer); let n = 0;
+    timer = setInterval(() => { show(++n); if (n >= cells.length) clearInterval(timer); }, 120); };
+}
+
+$('go').onclick = run;
+$('ex').onclick = () => { $('s1').value='TGTTACGG'; $('s2').value='GGTTGACTA'; $('mode').value='local';
+  $('match').value=3; $('mismatch').value=-3; $('gap').value=-2; run(); };
+</script></body></html>
